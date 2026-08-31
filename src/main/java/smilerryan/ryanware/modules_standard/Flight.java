@@ -297,7 +297,8 @@ public class Flight extends Module {
                 for (int dz = -1; dz <= 1; dz++) {
                     if (dx == 0 && dy == 0 && dz == 0) continue;
 
-                    if (mc.world.getBlockState(pos.offset(dx, dy, dz)).isSolidBlock(mc.world, pos)) {
+                    BlockPos checkPos = pos.add(dx, dy, dz);
+                    if (mc.world.getBlockState(checkPos).isSolidBlock(mc.world, checkPos)) {
                         return true;
                     }
                 }
