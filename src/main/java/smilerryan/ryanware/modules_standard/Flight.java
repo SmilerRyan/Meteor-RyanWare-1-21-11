@@ -5,6 +5,7 @@ import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.util.math.BlockPos;  // <-- ADD THIS IMPORT
 import smilerryan.ryanware.RyanWare;
 import org.lwjgl.glfw.GLFW;
 
