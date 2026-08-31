@@ -6,9 +6,14 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.MinecraftClient;
 import smilerryan.ryanware.RyanWare;
+import org.lwjgl.glfw.GLFW;
+
+import java.lang.reflect.Field;
 
 public class Flight extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
+    private final SettingGroup sgSafety = settings.createGroup("Elytra Flight");
+    private final SettingGroup sgBoat = settings.createGroup("Boat Flight");
 
     private final Setting<Boolean> speedEnabled = sgGeneral.add(new BoolSetting.Builder()
         .name("speed-enabled")
@@ -89,7 +94,51 @@ public class Flight extends Module {
         .build()
     );
 
+    private final Setting<Boolean> elytraBlockSlowdown = sgSafety.add(new BoolSetting.Builder()
+        .name("slow-down-enabled")
+        .description("Slows Elytra movement when very close to blocks.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Double> elytraSlowdownSpeed = sgSafety.add(new DoubleSetting.Builder()
+        .name("slow-down-speed")
+        .description("Maximum Elytra speed when close to a block.")
+        .defaultValue(1.0)
+        .min(0.05)
+        .max(10.0)
+        .sliderMax(5.0)
+        .visible(elytraBlockSlowdown::get)
+        .build()
+    );
+
+    private final Setting<Boolean> boatFly = sgBoat.add(new BoolSetting.Builder()
+        .name("enabled")
+        .description("Allows boats to fly while you are riding them.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Double> boatFlySpeed = sgBoat.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("Boat Fly movement speed.")
+        .defaultValue(1.5)
+        .min(0.05)
+        .max(10.0)
+        .sliderMax(5.0)
+        .visible(boatFly::get)
+        .build()
+    );
+
+    private final Setting<Boolean> boatLookVertical = sgBoat.add(new BoolSetting.Builder()
+        .name("one-handed-mode")
+        .description("Looking almost directly up or down with controls up/down for you.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final MinecraftClient mc = MinecraftClient.getInstance();
+
     private boolean wasJumping = false;
     private boolean isFlying = false;
 
@@ -176,6 +225,42 @@ public class Flight extends Module {
             mc.player.getAbilities().setFlySpeed((float) (speed.get() * 0.05f));
         }
 
+        /*
+         * Elytra block safety.
+         */
+        if (elytraBlockSlowdown.get()
+            && mc.player.isGliding()
+            && mc.world != null) {
+
+            if (isNearSolidBlock()) {
+                double maxSpeed = elytraSlowdownSpeed.get();
+
+                var velocity = mc.player.getVelocity();
+
+                double horizontalSpeed = Math.sqrt(
+                    velocity.x * velocity.x +
+                    velocity.z * velocity.z
+                );
+
+                if (horizontalSpeed > maxSpeed && horizontalSpeed > 0.0) {
+                    double multiplier = maxSpeed / horizontalSpeed;
+
+                    mc.player.setVelocity(
+                        velocity.x * multiplier,
+                        velocity.y,
+                        velocity.z * multiplier
+                    );
+                }
+            }
+        }
+
+        /*
+         * Boat Fly.
+         */
+        if (boatFly.get()) {
+            handleBoatFly();
+        }
+
         // Bypass Vanilla Anti-kick
         if (isFlying && !mc.player.isOnGround() && bypassAntiKick.get() && mc.player.age % 10 < 2) {
             mc.player.setVelocity(
@@ -202,5 +287,141 @@ public class Flight extends Module {
         }
 
         wasJumping = isJumping;
+    }
+
+    private boolean isNearSolidBlock() {
+        var pos = mc.player.getBlockPos();
+
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dy == 0 && dz == 0) continue;
+
+                    if (mc.world.getBlockState(pos.offset(dx, dy, dz)).isSolidBlock(mc.world, pos)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private void handleBoatFly() {
+        if (mc.player.getVehicle() == null) return;
+
+        var vehicle = mc.player.getVehicle();
+
+        if (!vehicle.getType().toString().toLowerCase().contains("boat")) {
+            return;
+        }
+
+        double speedValue = boatFlySpeed.get();
+
+        // Instantly rotate the boat to match the player's yaw.
+        vehicle.setYaw(mc.player.getYaw());
+
+        // W/S controls forward and backward movement.
+        double forward = 0.0;
+
+        if (mc.options.forwardKey.isPressed()) {
+            forward += 1.0;
+        }
+
+        if (mc.options.backKey.isPressed()) {
+            forward -= 1.0;
+        }
+
+        // Use player's current yaw.
+        double yaw = Math.toRadians(mc.player.getYaw());
+
+        double moveX = -Math.sin(yaw) * forward;
+        double moveZ = Math.cos(yaw) * forward;
+
+        /*
+         * Vertical movement:
+         *
+         * Space = full speed up
+         * Control = full speed down
+         *
+         * Look Vertical:
+         * Slightly up = slowly rises
+         * Farther up = rises faster
+         * Directly up = full speed up
+         *
+         * Slightly down = slowly descends
+         * Farther down = descends faster
+         * Directly down = full speed down
+         */
+        double vertical = 0.0;
+
+        if (mc.options.jumpKey.isPressed()) {
+            vertical = 1.0;
+        } else if (isControlDown()) {
+            vertical = -1.0;
+        } else if (boatLookVertical.get()) {
+            float pitch = mc.player.getPitch();
+
+            /*
+             * Minecraft pitch:
+             * -90 = directly up
+             *   0 = straight ahead
+             * +90 = directly down
+             *
+             * Ignore the first 5 degrees around horizontal
+             * so tiny mouse movements don't cause vertical movement.
+             */
+            double deadzone = 10.0;
+
+            if (pitch < -deadzone) {
+                // Convert -5..-90 into 0..1.
+                vertical = (pitch + deadzone) / (-90.0 + deadzone);
+
+            } else if (pitch > deadzone) {
+                // Convert 5..90 into 0..-1.
+                vertical = -(pitch - deadzone) / (90.0 - deadzone);
+            }
+        }
+
+        /*
+         * Explicitly control all velocity.
+         * Y is proportional to looking angle when
+         * Look Vertical is enabled.
+         */
+        vehicle.setVelocity(
+            moveX * speedValue,
+            vertical * speedValue,
+            moveZ * speedValue
+        );
+    }
+
+    private boolean isControlDown() {
+        try {
+            /*
+             * Find the long GLFW window handle without relying
+             * on version-specific Window accessor methods.
+             */
+            Object window = mc.getWindow();
+
+            for (Field field : window.getClass().getDeclaredFields()) {
+                if (field.getType() == long.class) {
+                    field.setAccessible(true);
+
+                    long value = field.getLong(window);
+
+                    if (value != 0L) {
+                        boolean left = GLFW.glfwGetKey(value, GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS;
+                        boolean right = GLFW.glfwGetKey(value, GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+
+                        if (left || right) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        return false;
     }
 }
