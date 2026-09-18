@@ -31,7 +31,7 @@ public class ChatLogger extends Module {
     private final Setting<String> pathFormat = sgGeneral.add(new StringSetting.Builder()
         .name("path-format")
         .description("Full log path format.")
-        .defaultValue("chatlogs/%date%_%time%_%player%_%server%.log")
+        .defaultValue("logs/chat/%date%_%time%_%player%_%server%.txt")
         .build()
     );
 
