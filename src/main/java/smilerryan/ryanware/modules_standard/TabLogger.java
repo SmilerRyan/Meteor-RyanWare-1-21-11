@@ -73,7 +73,7 @@ public class TabLogger extends Module {
     }
 
     private void processAndWriteLogs(Set<PlayerSnapshot> snapshots, String serverIp) {
-        File folder = new File("meteor-client" + File.separator + "ryanware" + File.separator + "tab-logger");
+        File folder = new File("logs" + File.separator + "tab");
         if (!folder.exists()) folder.mkdirs();
 
         File logFile = new File(folder, serverIp + ".txt");
