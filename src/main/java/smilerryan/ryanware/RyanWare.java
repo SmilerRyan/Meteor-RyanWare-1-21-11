@@ -271,6 +271,7 @@ public class RyanWare extends MeteorAddon {
         // Modules Standard - Chat - Ollama
         Modules.get().add(new OllamaAnnoyer());
         Modules.get().add(new OllamaChat());
+        Modules.get().add(new OllamaSuggestions());
         Modules.get().add(new OllamaTranslator());
     }
 
