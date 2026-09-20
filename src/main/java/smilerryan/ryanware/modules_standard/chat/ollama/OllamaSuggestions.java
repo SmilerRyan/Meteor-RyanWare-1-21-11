@@ -2,7 +2,10 @@ package smilerryan.ryanware.modules_standard.chat.ollama;
 
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
-import meteordevelopment.meteorclient.settings.*;
+import meteordevelopment.meteorclient.settings.IntSetting;
+import meteordevelopment.meteorclient.settings.Setting;
+import meteordevelopment.meteorclient.settings.SettingGroup;
+import meteordevelopment.meteorclient.settings.StringSetting;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
@@ -40,8 +43,7 @@ public class OllamaSuggestions extends Module {
         .name("prompt")
         .description("Prompt sent to Ollama. Use {input} for the chat message.")
         .defaultValue(
-            "Respond with only the corrected version of the following input with proper english and grammer only, no explanations:
-{input}"
+            "Respond with only the corrected version of the following input with proper english and grammar only, no explanations: {input}"
         )
         .build()
     );
@@ -52,18 +54,19 @@ public class OllamaSuggestions extends Module {
     private volatile String response = "";
 
     private String lastInput = null;
+    private String lastAppliedResponse = null;
 
-    /*
+    /**
      * Time when the current debounce period ends.
      */
     private long debounceUntil = 0;
 
-    /*
+    /**
      * Identifies the newest request.
      */
     private volatile int requestId = 0;
 
-    /*
+    /**
      * Actual active Ollama HTTP request.
      */
     private volatile Ollama.Request activeRequest = null;
@@ -83,6 +86,7 @@ public class OllamaSuggestions extends Module {
         lastInput = null;
         sentPrompt = "";
         response = "";
+        lastAppliedResponse = null;
         debounceUntil = 0;
         requestId++;
     }
@@ -94,6 +98,7 @@ public class OllamaSuggestions extends Module {
         lastInput = null;
         sentPrompt = "";
         response = "";
+        lastAppliedResponse = null;
         debounceUntil = 0;
         requestId++;
     }
@@ -110,6 +115,7 @@ public class OllamaSuggestions extends Module {
             lastInput = null;
             sentPrompt = "";
             response = "";
+            lastAppliedResponse = null;
             debounceUntil = 0;
 
             return;
@@ -145,6 +151,7 @@ public class OllamaSuggestions extends Module {
              */
             sentPrompt = "";
             response = "";
+            lastAppliedResponse = null;
 
             /*
              * Empty input doesn't need an Ollama request.
@@ -191,10 +198,7 @@ public class OllamaSuggestions extends Module {
         requestOllama(input, currentRequest);
     }
 
-    private void requestOllama(
-        String input,
-        int currentRequest
-    ) {
+    private void requestOllama(String input, int currentRequest) {
         /*
          * Make absolutely sure an old request isn't still active.
          */
@@ -239,6 +243,7 @@ public class OllamaSuggestions extends Module {
                 }
 
                 response = result == null ? "" : result;
+
 
             } catch (Exception e) {
 
@@ -301,7 +306,7 @@ public class OllamaSuggestions extends Module {
 
             event.drawContext.drawTextWithShadow(
                 mc.textRenderer,
-                "Prompt:",
+                "Sent:",
                 x,
                 y,
                 0xFFFFFF55
@@ -335,7 +340,7 @@ public class OllamaSuggestions extends Module {
 
             event.drawContext.drawTextWithShadow(
                 mc.textRenderer,
-                "Ollama:",
+                "Response:",
                 x,
                 y,
                 0xFF55FFFF
