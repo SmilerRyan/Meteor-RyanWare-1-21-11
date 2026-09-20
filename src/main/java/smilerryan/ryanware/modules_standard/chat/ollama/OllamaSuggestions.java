@@ -1,11 +1,9 @@
 package smilerryan.ryanware.modules_standard.chat.ollama;
 
+import meteordevelopment.meteorclient.events.game.ReceiveMessageEvent;
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
-import meteordevelopment.meteorclient.settings.IntSetting;
-import meteordevelopment.meteorclient.settings.Setting;
-import meteordevelopment.meteorclient.settings.SettingGroup;
-import meteordevelopment.meteorclient.settings.StringSetting;
+import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
@@ -16,6 +14,13 @@ import net.minecraft.client.gui.widget.TextFieldWidget;
 
 import smilerryan.ryanware.RyanWare;
 import smilerryan.ryanware.modules_standard.Settings;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class OllamaSuggestions extends Module {
 
@@ -39,12 +44,27 @@ public class OllamaSuggestions extends Module {
             .build()
     );
 
+    private final Setting<Boolean> instantAnswers = sgGeneral.add(new BoolSetting.Builder()
+        .name("instant-answers")
+        .description("Trigger AI query immediately when opening chat without requiring input. Closing chat cancels slow requests.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> instantDebounce = sgGeneral.add(
+        new IntSetting.Builder()
+            .name("instant-debounce")
+            .description("Wait time (ms) before triggering instant answer when chat opens.")
+            .defaultValue(500)
+            .min(0)
+            .sliderMax(5000)
+            .build()
+    );
+
     private final Setting<String> prompt = sgPrompt.add(new StringSetting.Builder()
         .name("prompt")
-        .description("Prompt sent to Ollama. Use {input} for the chat message.")
-        .defaultValue(
-            "Respond with only the corrected version of the following input with proper english and grammar only, no explanations: {input}"
-        )
+        .description("Prompt sent to Ollama. Use {history_X} for X previous chat messages (e.g. {history_1}, {history_100}) and {input} for the chat message. Leave input empty for instant answers.")
+        .defaultValue("{history_100}\n{input}")
         .build()
     );
 
@@ -62,6 +82,11 @@ public class OllamaSuggestions extends Module {
     private long debounceUntil = 0;
 
     /**
+     * Time when instant answer debounce period ends.
+     */
+    private long instantDebounceUntil = 0;
+
+    /**
      * Identifies the newest request.
      */
     private volatile int requestId = 0;
@@ -70,6 +95,20 @@ public class OllamaSuggestions extends Module {
      * Actual active Ollama HTTP request.
      */
     private volatile Ollama.Request activeRequest = null;
+
+    /**
+     * Actual Minecraft chat messages received through Meteor.
+     *
+     * These are incoming game chat messages, not the chat input history.
+     */
+    private final Deque<String> recentMessages = new ArrayDeque<>();
+
+    private static final int MAX_MESSAGES = 100;
+
+    /**
+     * Tracks if we've already triggered instant answer in this chat session.
+     */
+    private boolean instantAnswerTriggered = false;
 
     public OllamaSuggestions() {
         super(
@@ -88,7 +127,16 @@ public class OllamaSuggestions extends Module {
         response = "";
         lastAppliedResponse = null;
         debounceUntil = 0;
+        instantDebounceUntil = 0;
+        instantAnswerTriggered = false;
         requestId++;
+
+        /*
+         * Start with a fresh history for this module activation.
+         */
+        synchronized (recentMessages) {
+            recentMessages.clear();
+        }
     }
 
     @Override
@@ -100,7 +148,51 @@ public class OllamaSuggestions extends Module {
         response = "";
         lastAppliedResponse = null;
         debounceUntil = 0;
+        instantDebounceUntil = 0;
+        instantAnswerTriggered = false;
         requestId++;
+
+        synchronized (recentMessages) {
+            recentMessages.clear();
+        }
+    }
+
+    /**
+     * Receives actual Minecraft chat messages.
+     *
+     * This is the same mechanism used by OllamaChat.
+     *
+     * It includes messages from:
+     * - Other players
+     * - The local player
+     * - Server messages
+     * - Join/leave messages
+     * - Announcements
+     * - Other messages received by Meteor's ReceiveMessageEvent
+     */
+    @EventHandler
+    private void onReceiveMessage(ReceiveMessageEvent event) {
+        if (!isActive()) {
+            return;
+        }
+
+        if (event.getMessage() == null) {
+            return;
+        }
+
+        String message = event.getMessage().getString();
+
+        if (message == null || message.isBlank()) {
+            return;
+        }
+
+        synchronized (recentMessages) {
+            recentMessages.addLast(message);
+
+            while (recentMessages.size() > MAX_MESSAGES) {
+                recentMessages.removeFirst();
+            }
+        }
     }
 
     @EventHandler
@@ -110,7 +202,12 @@ public class OllamaSuggestions extends Module {
         }
 
         if (!(mc.currentScreen instanceof ChatScreen chatScreen)) {
-            cancelCurrentRequest();
+            // Chat closed - cancel any pending instant answer request.
+            if (instantDebounceUntil > 0 || activeRequest != null) {
+                cancelCurrentRequest();
+                instantDebounceUntil = 0;
+                instantAnswerTriggered = false;
+            }
 
             lastInput = null;
             sentPrompt = "";
@@ -119,6 +216,28 @@ public class OllamaSuggestions extends Module {
             debounceUntil = 0;
 
             return;
+        }
+
+        /*
+         * Instant answer handling.
+         */
+        if (instantAnswers.get() && !instantAnswerTriggered) {
+            if (instantDebounceUntil == 0) {
+
+                // Start instant answer debounce when chat opens.
+                instantDebounceUntil =
+                    System.currentTimeMillis() + instantDebounce.get();
+
+            } else if (System.currentTimeMillis() >= instantDebounceUntil) {
+
+                // Instant answer debounce finished, trigger request.
+                instantAnswerTriggered = true;
+                instantDebounceUntil = 0;
+
+                int currentRequest = requestId;
+
+                requestOllama("", currentRequest);
+            }
         }
 
         TextFieldWidget field = getChatField(chatScreen);
@@ -130,7 +249,8 @@ public class OllamaSuggestions extends Module {
         String input = field.getText();
 
         /*
-         * Input changed.
+         * Input changed - always trigger standard flow regardless
+         * of instant answers.
          */
         if (!input.equals(lastInput)) {
 
@@ -152,6 +272,12 @@ public class OllamaSuggestions extends Module {
             sentPrompt = "";
             response = "";
             lastAppliedResponse = null;
+
+            /*
+             * Cancel instant answer tracking since user started typing.
+             */
+            instantAnswerTriggered = false;
+            instantDebounceUntil = 0;
 
             /*
              * Empty input doesn't need an Ollama request.
@@ -198,14 +324,95 @@ public class OllamaSuggestions extends Module {
         requestOllama(input, currentRequest);
     }
 
+    /**
+     * Parses the history placeholder from the prompt template
+     * and extracts the requested number of messages.
+     */
+    private int extractHistoryCount(String promptTemplate) {
+        Pattern pattern = Pattern.compile("\\{history_(\\d+)\\}");
+        Matcher matcher = pattern.matcher(promptTemplate);
+
+        if (matcher.find()) {
+            try {
+                return Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Builds the history string from actual Minecraft chat messages.
+     *
+     * Example:
+     *
+     * {history_10}
+     *
+     * gives the 10 most recent messages received through
+     * ReceiveMessageEvent.
+     */
+    private String buildHistoryString(String promptTemplate) {
+        int limit = extractHistoryCount(promptTemplate);
+
+        if (limit <= 0) {
+            return "";
+        }
+
+        List<String> messages;
+
+        synchronized (recentMessages) {
+            messages = new ArrayList<>(recentMessages);
+        }
+
+        if (messages.isEmpty()) {
+            return "";
+        }
+
+        /*
+         * Keep only the newest X messages.
+         */
+        if (messages.size() > limit) {
+            messages = messages.subList(
+                messages.size() - limit,
+                messages.size()
+            );
+        }
+
+        return String.join("\n", messages);
+    }
+
+    /**
+     * Replaces all {history_X} placeholders in the prompt.
+     */
+    private String replaceHistoryPlaceholder(
+        String promptTemplate,
+        String history
+    ) {
+        return promptTemplate.replaceAll(
+            "\\{history_\\d+\\}",
+            Matcher.quoteReplacement(history)
+        );
+    }
+
     private void requestOllama(String input, int currentRequest) {
+
         /*
          * Make absolutely sure an old request isn't still active.
          */
         cancelCurrentRequest();
 
-        String fullPrompt = prompt.get()
-            .replace("{input}", input);
+        String promptTemplate = prompt.get();
+
+        String history =
+            buildHistoryString(promptTemplate);
+
+        String fullPrompt =
+            replaceHistoryPlaceholder(
+                promptTemplate,
+                history
+            ).replace("{input}", input);
 
         /*
          * Show exactly what is being sent.
@@ -218,6 +425,7 @@ public class OllamaSuggestions extends Module {
         activeRequest = request;
 
         Thread thread = new Thread(() -> {
+
             try {
 
                 String result = Ollama.queryOllama(
@@ -242,8 +450,10 @@ public class OllamaSuggestions extends Module {
                     return;
                 }
 
-                response = result == null ? "" : result;
-
+                response =
+                    result == null
+                        ? ""
+                        : result;
 
             } catch (Exception e) {
 
@@ -288,6 +498,7 @@ public class OllamaSuggestions extends Module {
 
     @EventHandler
     private void onRender(Render2DEvent event) {
+
         if (!isActive()) {
             return;
         }
@@ -298,6 +509,22 @@ public class OllamaSuggestions extends Module {
 
         int x = 5;
         int y = 5;
+
+        /*
+         * Instant Answer Status Indicator.
+         */
+        if (instantAnswers.get() && !instantAnswerTriggered) {
+
+            event.drawContext.drawTextWithShadow(
+                mc.textRenderer,
+                "Instant: Waiting...",
+                x,
+                y,
+                0xFFFF5555
+            );
+
+            y += mc.textRenderer.fontHeight + 4;
+        }
 
         /*
          * PROMPT
@@ -316,7 +543,9 @@ public class OllamaSuggestions extends Module {
 
             for (
                 String line :
-                sentPrompt.replace("\r\n", "\n").split("\n")
+                sentPrompt
+                    .replace("\r\n", "\n")
+                    .split("\n")
             ) {
 
                 event.drawContext.drawTextWithShadow(
@@ -350,7 +579,9 @@ public class OllamaSuggestions extends Module {
 
             for (
                 String line :
-                response.replace("\r\n", "\n").split("\n")
+                response
+                    .replace("\r\n", "\n")
+                    .split("\n")
             ) {
 
                 event.drawContext.drawTextWithShadow(
