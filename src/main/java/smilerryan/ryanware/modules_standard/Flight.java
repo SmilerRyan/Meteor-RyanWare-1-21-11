@@ -3,6 +3,7 @@ package smilerryan.ryanware.modules_standard;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.util.math.BlockPos;  // <-- ADD THIS IMPORT
@@ -51,6 +52,13 @@ public class Flight extends Module {
     private final Setting<Boolean> bypassAntiKick = sgGeneral.add(new BoolSetting.Builder()
         .name("bypass-anti-kick")
         .description("Bypasses vanilla anti-kick while flying.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> autoToggleNoFall = sgGeneral.add(new BoolSetting.Builder()
+        .name("auto-toggle-nofall")
+        .description("Automatically enable and disable the NoFall module.")
         .defaultValue(false)
         .build()
     );
@@ -168,6 +176,8 @@ public class Flight extends Module {
             mc.player.getAbilities().allowFlying = false;
             mc.player.getAbilities().flying = false;
         }
+
+        toggleNoFall(true);
     }
 
     @Override
@@ -176,6 +186,7 @@ public class Flight extends Module {
             mc.player.getAbilities().flying = false;
             mc.player.getAbilities().allowFlying = false;
         }
+        toggleNoFall(false);
     }
 
     @EventHandler
@@ -288,6 +299,17 @@ public class Flight extends Module {
         }
 
         wasJumping = isJumping;
+    }
+
+    private void toggleNoFall(boolean enable) {
+        if (!autoToggleNoFall.get()) return;
+
+        Module noFall = Modules.get().get("No-Fall");
+
+        if (noFall == null || noFall.isActive() == enable) return;
+
+        if (enable) noFall.toggle();
+        else noFall.toggle();
     }
 
     private boolean isNearSolidBlock() {
