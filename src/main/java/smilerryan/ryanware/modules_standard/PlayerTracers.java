@@ -8,6 +8,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.Box;
 import smilerryan.ryanware.RyanWare;
 
 public class PlayerTracers extends Module {
@@ -73,6 +74,13 @@ public class PlayerTracers extends Module {
     private final Setting<Boolean> ignoreBadUUID = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-bad-uuid")
         .description("Ignore non UUID v4 players.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> ignoreBehindWalls = sgGeneral.add(new BoolSetting.Builder()
+        .name("ignore-behind-walls")
+        .description("Ignore players behind walls.")
         .defaultValue(false)
         .build()
     );
@@ -148,6 +156,9 @@ public class PlayerTracers extends Module {
                     || display.startsWith("CIT-")))
                 continue;
 
+            // Check if player is behind walls
+            if (ignoreBehindWalls.get() && isPlayerBehindWall(sx, sy, sz, player))
+                continue;
 
             double tx = lerp(player.lastX, player.getX(), t);
             double ty = lerp(player.lastY, player.getY(), t)
@@ -156,6 +167,34 @@ public class PlayerTracers extends Module {
 
             event.renderer.line(sx, sy, sz, tx, ty, tz, tracerColor.get());
         }
+    }
+
+    private boolean isPlayerBehindWall(double startX, double startY, double startZ, PlayerEntity target) {
+        Vec3d startPos = new Vec3d(startX, startY, startZ);
+        Vec3d endPos = new Vec3d(
+            lerp(target.lastX, target.getX(), 0),
+            lerp(target.lastY, target.getY(), 0) + target.getEyeHeight(target.getPose()),
+            lerp(target.lastZ, target.getZ(), 0)
+        );
+
+        // Create a Box from the two Vec3d points with small padding
+        double minX = Math.min(startPos.x, endPos.x) - 0.3;
+        double minY = Math.min(startPos.y, endPos.y) - 0.3;
+        double minZ = Math.min(startPos.z, endPos.z) - 0.3;
+        double maxX = Math.max(startPos.x, endPos.x) + 0.3;
+        double maxY = Math.max(startPos.y, endPos.y) + 0.3;
+        double maxZ = Math.max(startPos.z, endPos.z) + 0.3;
+        
+        Box collisionBox = new Box(minX, minY, minZ, maxX, maxY, maxZ);
+
+        // Use world's getBlockCollisions with proper Entity and Box parameters
+        var collisions = mc.world.getBlockCollisions(mc.player, collisionBox);
+        
+        // Iterate to check if any blocks collide
+        for (var shape : collisions) {
+            return true; // Found at least one collision
+        }
+        return false; // No collisions found
     }
 
     private double lerp(double a, double b, float t) {
