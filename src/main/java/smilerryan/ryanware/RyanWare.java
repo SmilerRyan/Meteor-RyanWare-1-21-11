@@ -243,6 +243,7 @@ public class RyanWare extends MeteorAddon {
         Modules.get().add(new FullBright());
         Modules.get().add(new lessCpuWhenIdle());
         Modules.get().add(new MorePing());
+        Modules.get().add(new NearbyPlayerIndicators());
         Modules.get().add(new NoAttackDamage());
         Modules.get().add(new PlayerTracers());
         Modules.get().add(new Settings());
