@@ -13,6 +13,19 @@ import smilerryan.ryanware.RyanWare;
 public class NearbyPlayerIndicators extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
+    public enum Mode {
+        Corner,
+        CenterExact
+    }
+
+    private final Setting<Mode> indicatorMode = sgGeneral.add(
+        new EnumSetting.Builder<Mode>()
+            .name("mode")
+            .description("Indicator placement mode.")
+            .defaultValue(Mode.Corner)
+            .build()
+    );
+
     private final Setting<SettingColor> indicatorColor = sgGeneral.add(
         new ColorSetting.Builder()
             .name("color")
@@ -28,6 +41,16 @@ public class NearbyPlayerIndicators extends Module {
             .defaultValue(48)
             .min(1)
             .sliderMax(48)
+            .build()
+    );
+
+    private final Setting<Integer> arrowThickness = sgGeneral.add(
+        new IntSetting.Builder()
+            .name("arrow-thickness")
+            .description("Thickness of the arrow lines.")
+            .defaultValue(3)
+            .min(1)
+            .sliderMax(10)
             .build()
     );
 
@@ -125,81 +148,102 @@ public class NearbyPlayerIndicators extends Module {
             double dirX = Math.sin(yawRadians);
             double dirY = Math.tan(pitchRadians);
 
-            // Normalize to select one of the eight edge positions.
-            double max = Math.max(Math.abs(dirX), Math.abs(dirY));
-            if (max < 0.0001) continue;
-
-            double nx = dirX / max;
-            double ny = dirY / max;
-
-            int position;
-            if (ny < -0.65) {
-                position = nx < -0.35 ? 0 : nx > 0.35 ? 2 : 1;
-            } else if (ny > 0.65) {
-                position = nx < -0.35 ? 5 : nx > 0.35 ? 7 : 6;
-            } else {
-                position = nx < 0 ? 3 : 4;
-            }
-
-            int index = counts[position]++;
-
             float margin = cornerMargin.get();
             float size = arrowSize.get();
-            float gap = spacing.get();
+            int thickness = arrowThickness.get();
 
-            float x;
-            float y;
+            if (indicatorMode.get() == Mode.CenterExact) {
+                float cx = width / 2.0f;
+                float cy = height / 2.0f;
 
-            switch (position) {
-                case 0: // Top-left
-                    x = margin + size / 2f + index * gap;
-                    y = margin + size / 2f;
-                    break;
-                case 1: // Top
-                    x = width / 2f + index * gap;
-                    y = margin + size / 2f;
-                    break;
-                case 2: // Top-right
-                    x = width - margin - size / 2f - index * gap;
-                    y = margin + size / 2f;
-                    break;
-                case 3: // Left
-                    x = margin + size / 2f;
-                    y = height / 2f + index * gap;
-                    break;
-                case 4: // Right
-                    x = width - margin - size / 2f;
-                    y = height / 2f + index * gap;
-                    break;
-                case 5: // Bottom-left
-                    x = margin + size / 2f + index * gap;
-                    y = height - margin - size / 2f;
-                    break;
-                case 6: // Bottom
-                    x = width / 2f + index * gap;
-                    y = height - margin - size / 2f;
-                    break;
-                default: // Bottom-right
-                    x = width - margin - size / 2f - index * gap;
-                    y = height - margin - size / 2f;
-                    break;
+                double angle = Math.atan2(dirY, dirX);
+
+                float halfW = (width / 2.0f) - margin;
+                float halfH = (height / 2.0f) - margin;
+
+                float cos = (float) Math.cos(angle);
+                float sin = (float) Math.sin(angle);
+
+                float scale = Math.min(
+                    Math.abs(cos) > 0.0001 ? halfW / Math.abs(cos) : Float.MAX_VALUE,
+                    Math.abs(sin) > 0.0001 ? halfH / Math.abs(sin) : Float.MAX_VALUE
+                );
+
+                float x = cx + cos * scale;
+                float y = cy + sin * scale;
+
+                drawArrow(event, x, y, size, cos, sin, thickness);
+            } else {
+                // Corner mode logic
+                double max = Math.max(Math.abs(dirX), Math.abs(dirY));
+                if (max < 0.0001) continue;
+
+                double nx = dirX / max;
+                double ny = dirY / max;
+
+                int position;
+                if (ny < -0.65) {
+                    position = nx < -0.35 ? 0 : nx > 0.35 ? 2 : 1;
+                } else if (ny > 0.65) {
+                    position = nx < -0.35 ? 5 : nx > 0.35 ? 7 : 6;
+                } else {
+                    position = nx < 0 ? 3 : 4;
+                }
+
+                int index = counts[position]++;
+                float gap = spacing.get();
+
+                float x;
+                float y;
+
+                switch (position) {
+                    case 0: // Top-left
+                        x = margin + size / 2.0f + index * gap;
+                        y = margin + size / 2.0f;
+                        break;
+                    case 1: // Top
+                        x = width / 2.0f + index * gap;
+                        y = margin + size / 2.0f;
+                        break;
+                    case 2: // Top-right
+                        x = width - margin - size / 2.0f - index * gap;
+                        y = margin + size / 2.0f;
+                        break;
+                    case 3: // Left
+                        x = margin + size / 2.0f;
+                        y = height / 2.0f + index * gap;
+                        break;
+                    case 4: // Right
+                        x = width - margin - size / 2.0f;
+                        y = height / 2.0f + index * gap;
+                        break;
+                    case 5: // Bottom-left
+                        x = margin + size / 2.0f + index * gap;
+                        y = height - margin - size / 2.0f;
+                        break;
+                    case 6: // Bottom
+                        x = width / 2.0f + index * gap;
+                        y = height - margin - size / 2.0f;
+                        break;
+                    default: // Bottom-right
+                        x = width - margin - size / 2.0f - index * gap;
+                        y = height - margin - size / 2.0f;
+                        break;
+                }
+
+                x = MathHelper.clamp(x, margin + size / 2.0f, width - margin - size / 2.0f);
+                y = MathHelper.clamp(y, margin + size / 2.0f, height - margin - size / 2.0f);
+
+                boolean left = position == 0 || position == 3 || position == 5;
+                boolean right = position == 2 || position == 4 || position == 7;
+                boolean up = position <= 2;
+                boolean down = position >= 5;
+
+                float dx = left ? -1 : right ? 1 : 0;
+                float dy = up ? -1 : down ? 1 : 0;
+
+                drawArrow(event, x, y, size, dx, dy, thickness);
             }
-
-            x = MathHelper.clamp(x, margin + size / 2f,
-                width - margin - size / 2f);
-            y = MathHelper.clamp(y, margin + size / 2f,
-                height - margin - size / 2f);
-
-            // Arrow points toward the relevant edge/corner.
-            boolean left = position == 0 || position == 3 || position == 5;
-            boolean right = position == 2 || position == 4 || position == 7;
-            boolean up = position <= 2;
-            boolean down = position >= 5;
-
-            float dx = left ? -1 : right ? 1 : 0;
-            float dy = up ? -1 : down ? 1 : 0;
-
-            drawArrow(event, x, y, size, dx, dy);
         }
     }
 
@@ -209,7 +253,8 @@ public class NearbyPlayerIndicators extends Module {
         float y,
         float size,
         float dx,
-        float dy
+        float dy,
+        int thickness
     ) {
         if (dx == 0 && dy == 0) dy = -1;
 
@@ -251,11 +296,7 @@ public class NearbyPlayerIndicators extends Module {
                 baseY + (shaftEndY - baseY) * t
             );
 
-            event.drawContext.fill(
-                sx - 1, sy - 1,
-                sx + 2, sy + 2,
-                color
-            );
+            drawBlock(event, sx, sy, thickness, color);
         }
 
         // Draw the two arrowhead sides.
@@ -268,8 +309,8 @@ public class NearbyPlayerIndicators extends Module {
         double rightX = headBaseX - perpX * headWidth;
         double rightY = headBaseY - perpY * headWidth;
 
-        drawSegment(event, tipX, tipY, leftX, leftY, color);
-        drawSegment(event, tipX, tipY, rightX, rightY, color);
+        drawSegment(event, tipX, tipY, leftX, leftY, thickness, color);
+        drawSegment(event, tipX, tipY, rightX, rightY, thickness, color);
     }
 
     private void drawSegment(
@@ -278,6 +319,7 @@ public class NearbyPlayerIndicators extends Module {
         double y1,
         double x2,
         double y2,
+        int thickness,
         int color
     ) {
         double length = Math.hypot(x2 - x1, y2 - y1);
@@ -289,12 +331,19 @@ public class NearbyPlayerIndicators extends Module {
             int x = (int) Math.round(x1 + (x2 - x1) * t);
             int y = (int) Math.round(y1 + (y2 - y1) * t);
 
-            event.drawContext.fill(
-                x - 1, y - 1,
-                x + 2, y + 2,
-                color
-            );
+            drawBlock(event, x, y, thickness, color);
         }
+    }
+
+    private void drawBlock(Render2DEvent event, int x, int y, int thickness, int color) {
+        int half = thickness / 2;
+        event.drawContext.fill(
+            x - half,
+            y - half,
+            x + half + 1,
+            y + half + 1,
+            color
+        );
     }
 
     private double wrapDegrees(double degrees) {
