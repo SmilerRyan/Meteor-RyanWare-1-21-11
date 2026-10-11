@@ -196,7 +196,6 @@ public class RyanWare extends MeteorAddon {
         Modules.get().add(new MaxMaceKill());
         Modules.get().add(new ModuleDisabler());
         Modules.get().add(new ModuleMenu());
-        Modules.get().add(new NewChunks());
         Modules.get().add(new NoBlockDamage());
         Modules.get().add(new NoItemUsageCooldown());
         Modules.get().add(new PacketDelayer());
