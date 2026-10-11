@@ -24,56 +24,56 @@ public class PlayerTracers extends Module {
     private final Setting<Boolean> ignore0Ping = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-0-ping")
         .description("Ignore players with 0ms ping.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> ignoreBotTag = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-bot-tag")
         .description("Ignore players containing [BOT].")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> ignoreNpcTag = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-npc-tag")
         .description("Ignore players containing [NPC].")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> ignoreCIT = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-cit")
         .description("Ignore CIT fake players.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> ignoreInvisible = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-invisible")
         .description("Ignore invisible players.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> ignoreSpectators = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-spectators")
         .description("Ignore spectators.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> ignoreNoTabEntry = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-no-tab-entry")
         .description("Ignore players missing from tab list.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> ignoreBadUUID = sgGeneral.add(new BoolSetting.Builder()
         .name("ignore-bad-uuid")
         .description("Ignore non UUID v4 players.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
