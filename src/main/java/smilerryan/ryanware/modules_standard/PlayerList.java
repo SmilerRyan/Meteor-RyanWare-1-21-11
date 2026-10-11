@@ -4,7 +4,6 @@ import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.settings.*;
-import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import smilerryan.ryanware.RyanWare;
@@ -72,6 +71,48 @@ public class PlayerList extends Module {
         .sliderMax(10.0)
         .build()
     );
+
+    private final Setting<Integer> positionX = sgGeneral.add(new IntSetting.Builder()
+        .name("position-x")
+        .description("Horizontal screen position of the player list.")
+        .defaultValue(10)
+        .min(0)
+        .sliderMax(1000)
+        .build()
+    );
+
+    private final Setting<Integer> positionY = sgGeneral.add(new IntSetting.Builder()
+        .name("position-y")
+        .description("Vertical screen position of the player list.")
+        .defaultValue(20)
+        .min(0)
+        .sliderMax(1000)
+        .build()
+    );
+
+    private final Setting<Integer> lineSpacing = sgGeneral.add(new IntSetting.Builder()
+        .name("line-spacing")
+        .description("Extra vertical spacing between player rows.")
+        .defaultValue(0)
+        .min(0)
+        .sliderMax(12)
+        .build()
+    );
+
+    private final Setting<Boolean> background = sgGeneral.add(new BoolSetting.Builder()
+        .name("background")
+        .description("Draw a configurable background behind the player list.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<SettingColor> backgroundColor = sgGeneral.add(new ColorSetting.Builder()
+        .name("background-color")
+        .description("Background color and opacity for the player list.")
+        .defaultValue(new SettingColor(0, 0, 0, 160))
+        .visible(background::get)
+        .build()
+    );
     
     // --- Double / Half Ping Settings ---
     private final Setting<Boolean> doubleHalfEnable = sgDoubleHalf.add(new BoolSetting.Builder()
@@ -132,8 +173,6 @@ public class PlayerList extends Module {
 
 
     private List<PlayerListEntry> sortedPlayers;
-    private static final Color BACKGROUND_COLOR = new Color(0, 0, 0, 160); // Semi-transparent black background
-
     public PlayerList() {
         super(RyanWare.CATEGORY_STANDARD, RyanWare.modulePrefix_standard + "Player-List", "Custom player list, sortable by name, ping and detect similar or double/half pinging player patterns.");
     }
@@ -166,13 +205,13 @@ public class PlayerList extends Module {
     private void onRender(Render2DEvent event) {
         if (sortedPlayers == null || sortedPlayers.isEmpty()) return;
         
-        double x = 10;
-        double y = 20;
+        double x = positionX.get();
+        double y = positionY.get();
         
         double scaleValue = scale.get();
         
         // Calculate dynamic line height based on font metrics and scale
-        int lineHeight = (int) (mc.textRenderer.fontHeight * scaleValue);
+        int lineHeight = (int) (mc.textRenderer.fontHeight * scaleValue) + lineSpacing.get();
         
         // Find highest ping to determine layout padding dynamically
         int maxPing = 0;
@@ -242,13 +281,15 @@ public class PlayerList extends Module {
         double backgroundWidth = maxWidth + (padding * 2);
         double backgroundHeight = (visiblePlayers * lineHeight) + (padding * 2);
 
-        event.drawContext.fill(
-            (int)(x - padding), 
-            (int)(y - padding), 
-            (int)(x - padding + backgroundWidth), 
-            (int)(y - padding + backgroundHeight),
-            BACKGROUND_COLOR.getPacked()
-        );
+        if (background.get()) {
+            event.drawContext.fill(
+                (int)(x - padding),
+                (int)(y - padding),
+                (int)(x - padding + backgroundWidth),
+                (int)(y - padding + backgroundHeight),
+                backgroundColor.get().getPacked()
+            );
+        }
         
         // Draw each player entry
         for (PlayerListEntry entry : sortedPlayers) {
