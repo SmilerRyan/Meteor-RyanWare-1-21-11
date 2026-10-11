@@ -78,9 +78,9 @@ public class PlayerTracers extends Module {
         .build()
     );
 
-    private final Setting<Boolean> ignoreBehindWalls = sgGeneral.add(new BoolSetting.Builder()
-        .name("ignore-behind-walls")
-        .description("Ignore players behind walls.")
+    private final Setting<Boolean> ignoreOutOfSight = sgGeneral.add(new BoolSetting.Builder()
+        .name("ignore-out-of-sight")
+        .description("Ignore players with no visible body part.")
         .defaultValue(false)
         .build()
     );
@@ -156,8 +156,7 @@ public class PlayerTracers extends Module {
                     || display.startsWith("CIT-")))
                 continue;
 
-            // Check if player is behind walls
-            if (ignoreBehindWalls.get() && isPlayerBehindWall(sx, sy, sz, player))
+            if (ignoreOutOfSight.get() && !isPlayerVisible(player))
                 continue;
 
             double tx = lerp(player.lastX, player.getX(), t);
@@ -169,30 +168,28 @@ public class PlayerTracers extends Module {
         }
     }
 
-    private boolean isPlayerBehindWall(double startX, double startY, double startZ, PlayerEntity target) {
-        Vec3d startPos = new Vec3d(startX, startY, startZ);
-        Vec3d endPos = new Vec3d(
-            lerp(target.lastX, target.getX(), 0),
-            lerp(target.lastY, target.getY(), 0) + target.getEyeHeight(target.getPose()),
-            lerp(target.lastZ, target.getZ(), 0)
-        );
+    private boolean isPlayerVisible(PlayerEntity target) {
+        Box box = target.getBoundingBox();
+        Vec3d start = mc.player.getEyePos();
 
-        // Create a Box from the two Vec3d points with small padding
-        double minX = Math.min(startPos.x, endPos.x) - 0.3;
-        double minY = Math.min(startPos.y, endPos.y) - 0.3;
-        double minZ = Math.min(startPos.z, endPos.z) - 0.3;
-        double maxX = Math.max(startPos.x, endPos.x) + 0.3;
-        double maxY = Math.max(startPos.y, endPos.y) + 0.3;
-        double maxZ = Math.max(startPos.z, endPos.z) + 0.3;
-        
-        Box collisionBox = new Box(minX, minY, minZ, maxX, maxY, maxZ);
+        for (int x = 0; x <= 2; x++) {
+            for (int y = 0; y <= 3; y++) {
+                for (int z = 0; z <= 2; z++) {
+                    Vec3d end = new Vec3d(
+                        box.minX + box.getLengthX() * x / 2.0,
+                        box.minY + box.getLengthY() * y / 3.0,
+                        box.minZ + box.getLengthZ() * z / 2.0
+                    );
 
-        // Use world's getBlockCollisions with proper Entity and Box parameters
-        var collisions = mc.world.getBlockCollisions(mc.player, collisionBox);
-        
-        // Iterate to check if any blocks collide
-        for (var shape : collisions) {
-            return true; // Found at least one collision
+                    if (mc.world.raycast(new net.minecraft.world.RaycastContext(
+                        start, end,
+                        net.minecraft.world.RaycastContext.ShapeType.COLLIDER,
+                        net.minecraft.world.RaycastContext.FluidHandling.NONE,
+                        mc.player
+                    )).getType() == net.minecraft.util.hit.HitResult.Type.MISS)
+                        return true;
+                }
+            }
         }
         return false; // No collisions found
     }
