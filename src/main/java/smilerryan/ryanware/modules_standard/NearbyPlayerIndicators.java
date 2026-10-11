@@ -17,7 +17,7 @@ public class NearbyPlayerIndicators extends Module {
         new ColorSetting.Builder()
             .name("color")
             .description("Indicator arrow color.")
-            .defaultValue(new SettingColor(255, 220, 80, 220))
+            .defaultValue(new SettingColor(255, 0, 0, 128))
             .build()
     );
 
@@ -25,10 +25,9 @@ public class NearbyPlayerIndicators extends Module {
         new IntSetting.Builder()
             .name("arrow-size")
             .description("Size of each arrow.")
-            .defaultValue(12)
-            .min(6)
-            .max(24)
-            .sliderMax(24)
+            .defaultValue(48)
+            .min(1)
+            .sliderMax(48)
             .build()
     );
 
@@ -36,10 +35,9 @@ public class NearbyPlayerIndicators extends Module {
         new IntSetting.Builder()
             .name("spacing")
             .description("Spacing between arrows.")
-            .defaultValue(20)
-            .min(12)
-            .max(36)
-            .sliderMax(36)
+            .defaultValue(72)
+            .min(1)
+            .sliderMax(72)
             .build()
     );
 
@@ -47,10 +45,9 @@ public class NearbyPlayerIndicators extends Module {
         new IntSetting.Builder()
             .name("edge-margin")
             .description("Distance from the screen edges.")
-            .defaultValue(18)
-            .min(4)
-            .max(64)
-            .sliderMax(64)
+            .defaultValue(128)
+            .min(1)
+            .sliderMax(128)
             .build()
     );
 
