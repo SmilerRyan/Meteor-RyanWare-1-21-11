@@ -181,6 +181,7 @@ public class RyanWare extends MeteorAddon {
         Modules.get().add(new ElytraCreativeFly());
         Modules.get().add(new ElytraFakeRockets());
         Modules.get().add(new ElytraFly());
+        Modules.get().add(new ElytraControl());
         Modules.get().add(new ErmActuallyCorrector());        
         Modules.get().add(new EventAnnouncer());
         Modules.get().add(new Excavator());
